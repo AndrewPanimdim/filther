@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Aperture — Camera Capture</title>
+<style>
+  :root{
+    --ink:#141414;
+    --ink-soft:#1d1d1b;
+    --chrome:#3a3a38;
+    --chrome-light:#5a5854;
+    --paper:#f2efe9;
+    --paper-dim:#b9b6ae;
+    --amber:#e8a33d;
+    --amber-dim:#8a6428;
+    --danger:#c2523a;
+    font-family:'Suisse','Helvetica Neue',Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--ink);
+    color:var(--paper);
+    min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+    overscroll-behavior:none;
+  }
+  body{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    min-height:100vh;
+    padding:20px 16px 28px;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+  }
+
+  .masthead{
+    width:100%;
+    max-width:520px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .masthead .mark{
+    font-family:Georgia,'Times New Roman',serif;
+    font-style:italic;
+    font-size:22px;
+    letter-spacing:0.5px;
+    color:var(--paper);
+  }
+  .masthead .mark span{color:var(--amber);}
+  .masthead .status{
+    font-family:'Courier New',monospace;
+    font-size:11px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:var(--paper-dim);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .dot{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--chrome-light);
+    transition:background .3s, box-shadow .3s;
+  }
+  .dot.live{
+    background:var(--danger);
+    box-shadow:0 0 8px rgba(194,82,58,.8);
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{opacity:1;}
+    50%{opacity:.45;}
+  }
+
+  .viewfinder-shell{
+    width:100%;
+    max-width:520px;
+    position:relative;
+    background:var(--ink-soft);
+    border:1px solid var(--chrome);
+    border-radius:4px;
+    padding:10px;
+  }
+  .viewfinder{
+    position:relative;
+    width:100%;
+    aspect-ratio:3/4;
+    background:#000;
+    overflow:hidden;
+    border-radius:2px;
+  }
+  video{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  canvas{display:none;}
+
+  .frame-corners span{
+    position:absolute;
+    width:18px;height:18px;
+    border-color:var(--amber);
+    opacity:.85;
+  }
+  .fc-tl{top:8px;left:8px;border-top:2px solid;border-left:2px solid;}
+  .fc-tr{top:8px;right:8px;border-top:2px solid;border-right:2px solid;}
+  .fc-bl{bottom:8px;left:8px;border-bottom:2px solid;border-left:2px solid;}
+  .fc-br{bottom:8px;right:8px;border-bottom:2px solid;border-right:2px solid;}
+
+  .readout{
+    position:absolute;
+    left:10px;
+    bottom:10px;
+    font-family:'Courier New',monospace;
+    font-size:11px;
+    color:var(--amber);
+    background:rgba(0,0,0,.45);
+    padding:3px 7px;
+    border-radius:2px;
+    letter-spacing:1px;
+  }
+  .flash{
+    position:absolute;
+    inset:0;
+    background:#fff;
+    opacity:0;
+    pointer-events:none;
+  }
+  .flash.fire{animation:flashfire .35s ease-out;}
+  @keyframes flashfire{
+    0%{opacity:.85;}
+    100%{opacity:0;}
+  }
+
+  .placeholder{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    color:var(--paper-dim);
+    text-align:center;
+    padding:24px;
+  }
+  .placeholder svg{opacity:.5;}
+  .placeholder p{
+    font-size:13px;
+    max-width:280px;
+    line-height:1.5;
+    margin:0;
+  }
+  .enable-btn{
+    margin-top:6px;
+    background:var(--amber);
+    color:var(--ink);
+    border:none;
+    padding:10px 20px;
+    border-radius:2px;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.5px;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  .enable-btn:active{transform:scale(.97);}
+
+  /* control deck */
+  .deck{
+    width:100%;
+    max-width:520px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-top:18px;
+    padding:0 6px;
+  }
+  .deck-btn{
+    width:46px;height:46px;
+    border-radius:50%;
+    border:1px solid var(--chrome);
+    background:var(--ink-soft);
+    color:var(--paper);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    transition:border-color .2s, background .2s;
+  }
+  .deck-btn:active{background:var(--chrome);}
+  .deck-btn:disabled{opacity:.35; cursor:not-allowed;}
+  .deck-btn svg{width:20px;height:20px;}
+
+  .shutter{
+    width:76px;height:76px;
+    border-radius:50%;
+    background:conic-gradient(from 0deg, var(--chrome) 0 8deg, transparent 8deg 22deg,
+      var(--chrome) 22deg 30deg, transparent 30deg 44deg,
+      var(--chrome) 44deg 52deg, transparent 52deg 66deg,
+      var(--chrome) 66deg 74deg, transparent 74deg 88deg,
+      var(--chrome) 88deg 96deg, transparent 96deg 110deg,
+      var(--chrome) 110deg 118deg, transparent 118deg 132deg,
+      var(--chrome) 132deg 140deg, transparent 140deg 154deg,
+      var(--chrome) 154deg 162deg, transparent 162deg 176deg,
+      var(--chrome) 176deg 184deg, transparent 184deg 198deg,
+      var(--chrome) 198deg 206deg, transparent 206deg 220deg,
+      var(--chrome) 220deg 228deg, transparent 228deg 242deg,
+      var(--chrome) 242deg 250deg, transparent 250deg 264deg,
+      var(--chrome) 264deg 272deg, transparent 272deg 286deg,
+      var(--chrome) 286deg 294deg, transparent 294deg 308deg,
+      var(--chrome) 308deg 316deg, transparent 316deg 330deg,
+      var(--chrome) 330deg 338deg, transparent 338deg 352deg,
+      var(--chrome) 352deg 360deg);
+    padding:6px;
+    cursor:pointer;
+    border:none;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .shutter-inner{
+    width:100%;height:100%;
+    border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #fff8ec 0%, var(--amber) 45%, var(--amber-dim) 100%);
+    box-shadow: inset 0 -3px 6px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.5);
+    transition:transform .12s;
+  }
+  .shutter:active .shutter-inner{transform:scale(.9);}
+  .shutter:disabled{opacity:.35; cursor:not-allowed;}
+  .shutter:disabled .shutter-inner{background:var(--chrome-light);}
+
+  /* filmstrip */
+  .filmstrip-wrap{
+    width:100%;
+    max-width:520px;
+    margin-top:22px;
+  }
+  .filmstrip-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom:8px;
+  }
+  .filmstrip-head h2{
+    font-family:'Courier New',monospace;
+    font-size:11px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--paper-dim);
+    margin:0;
+    font-weight:400;
+  }
+  .filmstrip-head .count{
+    font-family:'Courier New',monospace;
+    font-size:11px;
+    color:var(--amber-dim);
+  }
+  .filmstrip{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    padding:4px 2px 10px;
+    scrollbar-width:thin;
+  }
+  .filmstrip::-webkit-scrollbar{height:5px;}
+  .filmstrip::-webkit-scrollbar-thumb{background:var(--chrome); border-radius:3px;}
+  .frame{
+    flex:0 0 auto;
+    width:72px;
+    height:96px;
+    position:relative;
+    border:1px solid var(--chrome);
+    border-radius:2px;
+    overflow:hidden;
+    background:var(--ink-soft);
+    cursor:pointer;
+  }
+  .frame img{width:100%;height:100%;object-fit:cover;display:block;}
+  .frame .idx{
+    position:absolute;
+    top:2px;left:3px;
+    font-family:'Courier New',monospace;
+    font-size:9px;
+    color:var(--amber);
+    background:rgba(0,0,0,.5);
+    padding:0 3px;
+  }
+  .empty-strip{
+    font-size:12px;
+    color:var(--paper-dim);
+    font-family:'Courier New',monospace;
+    padding:14px 2px;
+  }
+
+  /* lightbox */
+  .lightbox{
+    position:fixed;
+    inset:0;
+    background:rgba(10,10,10,.94);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    z-index:50;
+    padding:20px;
+  }
+  .lightbox.open{display:flex;}
+  .lightbox img{
+    max-width:min(90vw,480px);
+    max-height:65vh;
+    border:1px solid var(--chrome);
+    border-radius:2px;
+  }
+  .lightbox-actions{
+    display:flex;
+    gap:12px;
+    margin-top:18px;
+  }
+  .lb-btn{
+    font-family:'Courier New',monospace;
+    font-size:12px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    background:transparent;
+    border:1px solid var(--chrome-light);
+    color:var(--paper);
+    padding:9px 16px;
+    border-radius:2px;
+    cursor:pointer;
+  }
+  .lb-btn.primary{background:var(--amber); color:var(--ink); border-color:var(--amber); font-weight:700;}
+  .lb-btn.danger{border-color:var(--danger); color:var(--danger);}
+  .lb-close{
+    position:absolute;
+    top:18px;right:18px;
+    background:none;
+    border:none;
+    color:var(--paper-dim);
+    font-size:26px;
+    line-height:1;
+    cursor:pointer;
+  }
+
+  @media (max-width:380px){
+    .shutter{width:66px;height:66px;}
+    .deck-btn{width:42px;height:42px;}
+  }
+</style>
+</head>
+<body>
+
+  <div class="masthead">
+    <div class="mark">apert<span>ure</span></div>
+    <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">idle</span></div>
+  </div>
+
+  <div class="viewfinder-shell">
+    <div class="viewfinder" id="viewfinder">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+
+      <div class="placeholder" id="placeholder">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/>
+          <circle cx="12" cy="13.5" r="3.4"/>
+        </svg>
+        <p>Camera access is required to compose a shot. Nothing is uploaded — captures stay in this browser tab.</p>
+        <button class="enable-btn" id="enableBtn">Enable Camera</button>
+      </div>
+
+      <div class="frame-corners" id="frameCorners" style="display:none;">
+        <span class="fc-tl"></span><span class="fc-tr"></span><span class="fc-bl"></span><span class="fc-br"></span>
+      </div>
+      <div class="readout" id="readout" style="display:none;">f/2.8 · READY</div>
+      <div class="flash" id="flash"></div>
+    </div>
+  </div>
+
+  <div class="deck">
+    <button class="deck-btn" id="switchBtn" title="Switch camera" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+        <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+      </svg>
+    </button>
+
+    <button class="shutter" id="shutterBtn" disabled>
+      <div class="shutter-inner"></div>
+    </button>
+
+    <button class="deck-btn" id="stopBtn" title="Stop camera" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <rect x="6" y="6" width="12" height="12" rx="1"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="filmstrip-wrap">
+    <div class="filmstrip-head">
+      <h2>Filmstrip</h2>
+      <span class="count" id="frameCount">0 frames</span>
+    </div>
+    <div class="filmstrip" id="filmstrip">
+      <div class="empty-strip">Captured photos will appear here.</div>
+    </div>
+  </div>
+
+  <div class="lightbox" id="lightbox">
+    <button class="lb-close" id="lbClose">&times;</button>
+    <img id="lbImage" src="" alt="Captured photo">
+    <div class="lightbox-actions">
+      <button class="lb-btn primary" id="lbDownload">Download</button>
+      <button class="lb-btn danger" id="lbDelete">Delete</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const placeholder = document.getElementById('placeholder');
+  const enableBtn = document.getElementById('enableBtn');
+  const shutterBtn = document.getElementById('shutterBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const switchBtn = document.getElementById('switchBtn');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const frameCorners = document.getElementById('frameCorners');
+  const readout = document.getElementById('readout');
+  const flash = document.getElementById('flash');
+  const filmstrip = document.getElementById('filmstrip');
+  const frameCount = document.getElementById('frameCount');
+  const lightbox = document.getElementById('lightbox');
+  const lbImage = document.getElementById('lbImage');
+  const lbClose = document.getElementById('lbClose');
+  const lbDownload = document.getElementById('lbDownload');
+  const lbDelete = document.getElementById('lbDelete');
+
+  let stream = null;
+  let facingMode = 'environment';
+  let shots = []; // {dataUrl, id}
+  let activeShotId = null;
+
+  function setStatus(state){
+    if(state === 'live'){
+      statusDot.classList.add('live');
+      statusText.textContent = 'live';
+    } else {
+      statusDot.classList.remove('live');
+      statusText.textContent = state;
+    }
+  }
+
+  async function startCamera(mode){
+    stopCamera();
+    setStatus('connecting');
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 1280 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      placeholder.style.display = 'none';
+      frameCorners.style.display = 'block';
+      readout.style.display = 'block';
+      shutterBtn.disabled = false;
+      stopBtn.disabled = false;
+      switchBtn.disabled = false;
+      setStatus('live');
+    } catch(err){
+      setStatus('idle');
+      placeholder.style.display = 'flex';
+      let msg = 'Could not access the camera.';
+      if(err.name === 'NotAllowedError') msg = 'Camera permission was denied. Allow camera access in your browser settings and try again.';
+      else if(err.name === 'NotFoundError') msg = 'No camera was found on this device.';
+      placeholder.querySelector('p').textContent = msg;
+    }
+  }
+
+  function stopCamera(){
+    if(stream){
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+  }
+
+  enableBtn.addEventListener('click', () => startCamera(facingMode));
+
+  stopBtn.addEventListener('click', () => {
+    stopCamera();
+    placeholder.style.display = 'flex';
+    placeholder.querySelector('p').textContent = 'Camera stopped. Enable it again to keep shooting.';
+    frameCorners.style.display = 'none';
+    readout.style.display = 'none';
+    shutterBtn.disabled = true;
+    stopBtn.disabled = true;
+    switchBtn.disabled = true;
+    setStatus('idle');
+  });
+
+  switchBtn.addEventListener('click', () => {
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    startCamera(facingMode);
+  });
+
+  shutterBtn.addEventListener('click', () => {
+    if(!stream) return;
+    const w = video.videoWidth, h = video.videoHeight;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if(facingMode === 'user'){
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+    flash.classList.remove('fire');
+    void flash.offsetWidth;
+    flash.classList.add('fire');
+
+    const id = Date.now();
+    shots.unshift({ dataUrl, id });
+    renderFilmstrip();
+  });
+
+  function renderFilmstrip(){
+    frameCount.textContent = shots.length + (shots.length === 1 ? ' frame' : ' frames');
+    if(shots.length === 0){
+      filmstrip.innerHTML = '<div class="empty-strip">Captured photos will appear here.</div>';
+      return;
+    }
+    filmstrip.innerHTML = '';
+    shots.forEach((shot, i) => {
+      const div = document.createElement('div');
+      div.className = 'frame';
+      div.innerHTML = `<span class="idx">${String(shots.length - i).padStart(2,'0')}</span><img src="${shot.dataUrl}" alt="Captured frame ${i+1}">`;
+      div.addEventListener('click', () => openLightbox(shot.id));
+      filmstrip.appendChild(div);
+    });
+  }
+
+  function openLightbox(id){
+    const shot = shots.find(s => s.id === id);
+    if(!shot) return;
+    activeShotId = id;
+    lbImage.src = shot.dataUrl;
+    lightbox.classList.add('open');
+  }
+  function closeLightbox(){
+    lightbox.classList.remove('open');
+    activeShotId = null;
+  }
+  lbClose.addEventListener('click', closeLightbox);
+  lightbox.addEventListener('click', (e) => { if(e.target === lightbox) closeLightbox(); });
+
+  lbDownload.addEventListener('click', () => {
+    const shot = shots.find(s => s.id === activeShotId);
+    if(!shot) return;
+    const a = document.createElement('a');
+    a.href = shot.dataUrl;
+    a.download = `aperture-${shot.id}.jpg`;
+    a.click();
+  });
+
+  lbDelete.addEventListener('click', () => {
+    shots = shots.filter(s => s.id !== activeShotId);
+    renderFilmstrip();
+    closeLightbox();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') closeLightbox();
+  });
+})();
+</script>
+</body>
+</html>

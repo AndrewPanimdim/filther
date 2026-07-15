@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Three Takes — Photobooth</title>
+<style>
+  :root{
+    --paper:#fafaf8;
+    --ink:#1c1c1a;
+    --ink-soft:#6b675e;
+    --line:#dddad0;
+    --line-strong:#c6c2b6;
+    --accent:#2f3e54;
+    --accent-soft:#e7ebf0;
+    --danger:#a34632;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  body{
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:28px 18px 40px;
+  }
+
+  .wrap{width:100%; max-width:460px;}
+
+  header{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:22px;
+  }
+  header h1{
+    font-family:Georgia,'Times New Roman',serif;
+    font-weight:600;
+    font-size:21px;
+    letter-spacing:0.2px;
+    margin:0;
+  }
+  header .tag{
+    font-family:'Courier New',monospace;
+    font-size:10px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+
+  /* step indicator */
+  .steps{
+    display:flex;
+    gap:8px;
+    margin-bottom:16px;
+  }
+  .step{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .step .tick{
+    height:3px;
+    border-radius:2px;
+    background:var(--line);
+  }
+  .step.done .tick{background:var(--ink);}
+  .step.active .tick{background:var(--accent); height:4px;}
+  .step .label{
+    font-family:'Courier New',monospace;
+    font-size:10px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--line-strong);
+  }
+  .step.done .label{color:var(--ink-soft);}
+  .step.active .label{color:var(--accent); font-weight:700;}
+
+  /* stage */
+  .stage-shell{
+    position:relative;
+    width:100%;
+    aspect-ratio:1/1;
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    background:#111;
+  }
+  .stage-box{
+    position:absolute;
+    inset:0;
+    transform:scaleX(-1);
+  }
+  video, canvas#overlay{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  #overlay{pointer-events:none;}
+
+  .intro-panel{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+    padding:28px;
+    text-align:center;
+    background:var(--paper);
+    color:var(--ink);
+  }
+  .intro-panel p{
+    margin:0;
+    font-size:13.5px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    max-width:280px;
+  }
+  .intro-panel .icon{color:var(--ink-soft);}
+
+  .hint-bar{
+    position:absolute;
+    left:0; right:0; bottom:0;
+    padding:10px 12px;
+    background:linear-gradient(to top, rgba(0,0,0,.55), transparent);
+    color:#fff;
+    font-size:12px;
+    letter-spacing:.3px;
+    text-align:center;
+    opacity:0;
+    transition:opacity .25s;
+  }
+  .hint-bar.show{opacity:1;}
+
+  .flash{
+    position:absolute; inset:0;
+    background:#fff;
+    opacity:0;
+    pointer-events:none;
+  }
+  .flash.fire{animation:flashfire .3s ease-out;}
+  @keyframes flashfire{0%{opacity:.8;}100%{opacity:0;}}
+
+  /* buttons */
+  .btn{
+    font-family:inherit;
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:.2px;
+    padding:12px 22px;
+    border-radius:999px;
+    border:1px solid var(--ink);
+    background:var(--ink);
+    color:var(--paper);
+    cursor:pointer;
+    transition:opacity .15s, transform .1s;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn:disabled{opacity:.35; cursor:not-allowed;}
+  .btn.outline{
+    background:transparent;
+    color:var(--ink);
+    border-color:var(--line-strong);
+  }
+  .btn.danger{
+    background:transparent;
+    color:var(--danger);
+    border-color:var(--danger);
+  }
+
+  .controls{
+    display:flex;
+    justify-content:center;
+    gap:12px;
+    margin-top:20px;
+  }
+
+  /* results */
+  .results{display:none;}
+  .results.show{display:block;}
+  .strip-frame{
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    background:#fff;
+  }
+  .strip-frame img{width:100%; display:block;}
+  .results-actions{
+    display:flex;
+    gap:12px;
+    margin-top:18px;
+    justify-content:center;
+  }
+
+  footer{
+    margin-top:26px;
+    text-align:center;
+    font-family:'Courier New',monospace;
+    font-size:10px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--line-strong);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Three Takes</h1>
+    <span class="tag" id="statusTag">idle</span>
+  </header>
+
+  <div class="steps" id="steps">
+    <div class="step" data-key="hat"><div class="tick"></div><div class="label">Hat</div></div>
+    <div class="step" data-key="mustache"><div class="tick"></div><div class="label">Mustache</div></div>
+    <div class="step" data-key="patch"><div class="tick"></div><div class="label">Patch</div></div>
+  </div>
+
+  <div class="stage-shell" id="stageShell">
+    <div class="stage-box">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <div class="intro-panel" id="introPanel">
+      <svg class="icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/>
+        <circle cx="12" cy="13.5" r="3.4"/>
+      </svg>
+      <p id="introText">Three shots, three disguises: a cowboy hat, a mustache, and an eye patch, each one following your face automatically. Nothing leaves this browser tab.</p>
+      <button class="btn" id="startBtn">Enable Camera</button>
+    </div>
+
+    <div class="hint-bar" id="hintBar"></div>
+    <div class="flash" id="flash"></div>
+  </div>
+
+  <div class="controls" id="controls" style="display:none;">
+    <button class="btn outline" id="stopBtn">Cancel</button>
+    <button class="btn" id="shutterBtn" disabled>Capture</button>
+  </div>
+
+  <div class="results" id="results">
+    <div class="strip-frame">
+      <img id="resultImg" alt="Photobooth strip">
+    </div>
+    <div class="results-actions">
+      <button class="btn outline" id="restartBtn">Start Over</button>
+      <button class="btn" id="downloadBtn">Download</button>
+    </div>
+  </div>
+
+  <footer>Made in-browser · nothing uploaded</footer>
+</div>
+
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+// ---------- config ----------
+const STEPS = [
+  { key: 'hat',      label: 'Cowboy Hat', hint: 'Center your face — the hat will settle on top' },
+  { key: 'mustache', label: 'Mustache',   hint: 'Hold still while the mustache lines up' },
+  { key: 'patch',    label: 'Eye Patch',  hint: 'Arrr — keep your face in frame' }
+];
+
+// ---------- elements ----------
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const stageShell = document.getElementById('stageShell');
+const introPanel = document.getElementById('introPanel');
+const introText = document.getElementById('introText');
+const startBtn = document.getElementById('startBtn');
+const controls = document.getElementById('controls');
+const shutterBtn = document.getElementById('shutterBtn');
+const stopBtn = document.getElementById('stopBtn');
+const hintBar = document.getElementById('hintBar');
+const flash = document.getElementById('flash');
+const statusTag = document.getElementById('statusTag');
+const stepsEl = document.getElementById('steps');
+const results = document.getElementById('results');
+const resultImg = document.getElementById('resultImg');
+const restartBtn = document.getElementById('restartBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const captureCanvas = document.getElementById('captureCanvas');
+
+// ---------- state ----------
+let faceLandmarker = null;
+let stream = null;
+let rafId = null;
+let lastVideoTime = -1;
+let currentLandmarks = null;
+let stepIndex = 0;
+let shots = [];
+let stripDataUrl = null;
+let stage = 'intro'; // intro | capturing | results
+
+// ---------- landmark geometry helpers ----------
+const P  = (lm, i, w, h) => ({ x: lm[i].x * w, y: lm[i].y * h });
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const mid  = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+const ang  = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+
+function roundedRectPath(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); }
+  else { ctx.rect(x, y, w, h); }
+}
+
+// ---------- filter renderers ----------
+// Each takes the drawing context plus the raw landmark array and pixel dimensions.
+function drawHat(ctx, lm, w, h){
+  const eyeL = P(lm, 33, w, h), eyeR = P(lm, 263, w, h);
+  const cheekL = P(lm, 234, w, h), cheekR = P(lm, 454, w, h);
+  const forehead = P(lm, 10, w, h);
+  const rotation = ang(eyeL, eyeR);
+  const faceWidth = dist(cheekL, cheekR);
+  const hw = faceWidth * 1.85;
+  const cw = hw * 0.52, ch = hw * 0.4;
+
+  ctx.save();
+  ctx.translate(forehead.x, forehead.y);
+  ctx.rotate(rotation);
+
+  // brim
+  ctx.fillStyle = '#2b2320';
+  ctx.beginPath();
+  ctx.ellipse(0, ch * 0.06, hw / 2, hw * 0.09, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // crown
+  ctx.fillStyle = '#3b2f28';
+  roundedRectPath(ctx, -cw / 2, -ch * 0.95, cw, ch, cw * 0.22);
+  ctx.fill();
+
+  // band
+  ctx.fillStyle = '#8f5a2b';
+  ctx.fillRect(-cw / 2, -ch * 0.3, cw, ch * 0.14);
+
+  ctx.restore();
+}
+
+function drawMustache(ctx, lm, w, h){
+  const noseBottom = P(lm, 2, w, h);
+  const lipTop = P(lm, 13, w, h);
+  const mouthL = P(lm, 61, w, h);
+  const mouthR = P(lm, 291, w, h);
+  const center = mid(noseBottom, lipTop);
+  const rotation = ang(mouthL, mouthR);
+  const mw = dist(mouthL, mouthR) * 1.55;
+  const mh = mw * 0.36;
+
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  ctx.rotate(rotation);
+  ctx.fillStyle = '#241d18';
+
+  [-1, 1].forEach(side => {
+    ctx.save();
+    ctx.scale(side, 1);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(mw * 0.16, -mh * 0.55, mw * 0.32, -mh * 0.15, mw * 0.48, mh * 0.05);
+    ctx.bezierCurveTo(mw * 0.36, mh * 0.32, mw * 0.2, mh * 0.24, mw * 0.05, mh * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+
+  ctx.restore();
+}
+
+function drawPatch(ctx, lm, w, h){
+  const outer = P(lm, 33, w, h), inner = P(lm, 133, w, h);
+  const otherOuter = P(lm, 263, w, h);
+  const cheekL = P(lm, 234, w, h), cheekR = P(lm, 454, w, h);
+  const eyeCenter = mid(outer, inner);
+  const rotation = ang(outer, otherOuter);
+  const faceWidth = dist(cheekL, cheekR);
+  const eyeWidth = dist(outer, inner);
+  const r = Math.max(eyeWidth * 1.25, faceWidth * 0.15);
+
+  ctx.save();
+  ctx.translate(eyeCenter.x, eyeCenter.y);
+  ctx.rotate(rotation);
+
+  // straps toward the temples
+  ctx.strokeStyle = '#161616';
+  ctx.lineWidth = faceWidth * 0.04;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.85, 0);
+  ctx.lineTo(-faceWidth * 0.8, -faceWidth * 0.1);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(r * 0.85, 0);
+  ctx.lineTo(faceWidth * 0.55, -faceWidth * 0.32);
+  ctx.stroke();
+
+  // patch
+  ctx.fillStyle = '#161616';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r, r * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawFilterByKey(ctx, lm, w, h, key){
+  if (key === 'hat') drawHat(ctx, lm, w, h);
+  else if (key === 'mustache') drawMustache(ctx, lm, w, h);
+  else if (key === 'patch') drawPatch(ctx, lm, w, h);
+}
+
+// ---------- face model setup ----------
+async function loadFaceLandmarker(){
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  try {
+    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numFaces: 1
+    });
+  } catch (e) {
+    // GPU delegate can fail on some devices — fall back to CPU
+    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "CPU"
+      },
+      runningMode: "VIDEO",
+      numFaces: 1
+    });
+  }
+}
+loadFaceLandmarker().catch(() => {
+  faceLandmarker = null;
+});
+
+// ---------- camera ----------
+async function startCamera(){
+  startBtn.disabled = true;
+  startBtn.textContent = 'Starting…';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    if (!faceLandmarker) {
+      // give the model a moment more if it hasn't finished loading yet
+      let waited = 0;
+      while (!faceLandmarker && waited < 8000) {
+        await new Promise(r => setTimeout(r, 200));
+        waited += 200;
+      }
+    }
+    if (!faceLandmarker) {
+      introText.textContent = 'Face tracking could not load, likely a network issue. Reload the page and try again.';
+      startBtn.textContent = 'Retry';
+      startBtn.disabled = false;
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+
+    enterCapturing();
+  } catch (err) {
+    let msg = 'Could not access the camera.';
+    if (err.name === 'NotAllowedError') msg = 'Camera permission was denied. Allow camera access and try again.';
+    else if (err.name === 'NotFoundError') msg = 'No camera was found on this device.';
+    introText.textContent = msg;
+    startBtn.textContent = 'Try Again';
+    startBtn.disabled = false;
+  }
+}
+
+function stopCamera(){
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+}
+
+// ---------- stage transitions ----------
+function enterCapturing(){
+  stage = 'capturing';
+  stepIndex = 0;
+  shots = [];
+  introPanel.style.display = 'none';
+  controls.style.display = 'flex';
+  results.classList.remove('show');
+  statusTag.textContent = 'live';
+  updateStepUI();
+  renderLoop();
+}
+
+function updateStepUI(){
+  [...stepsEl.children].forEach((el, i) => {
+    el.classList.toggle('done', i < stepIndex);
+    el.classList.toggle('active', i === stepIndex);
+  });
+}
+
+function updateHint(){
+  if (stage !== 'capturing') return;
+  const step = STEPS[stepIndex];
+  if (!currentLandmarks) {
+    hintBar.textContent = 'No face detected — center your face in frame';
+    hintBar.classList.add('show');
+    shutterBtn.disabled = true;
+  } else {
+    hintBar.textContent = step.hint;
+    hintBar.classList.add('show');
+    shutterBtn.disabled = false;
+  }
+}
+
+// ---------- detection + live overlay loop ----------
+function renderLoop(){
+  if (stage === 'capturing' && faceLandmarker && video.readyState >= 2) {
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      const result = faceLandmarker.detectForVideo(video, performance.now());
+      currentLandmarks = (result.faceLandmarks && result.faceLandmarks[0]) || null;
+    }
+    if (overlay.width !== video.videoWidth || overlay.height !== video.videoHeight) {
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
+    }
+    const octx = overlay.getContext('2d');
+    octx.clearRect(0, 0, overlay.width, overlay.height);
+    if (currentLandmarks) {
+      drawFilterByKey(octx, currentLandmarks, overlay.width, overlay.height, STEPS[stepIndex].key);
+    }
+    updateHint();
+  }
+  rafId = requestAnimationFrame(renderLoop);
+}
+
+// ---------- capture ----------
+function capture(){
+  if (!currentLandmarks) return;
+  const w = video.videoWidth, h = video.videoHeight;
+  captureCanvas.width = w;
+  captureCanvas.height = h;
+  const cctx = captureCanvas.getContext('2d');
+
+  // mirror to match what the user sees in the preview
+  cctx.save();
+  cctx.translate(w, 0);
+  cctx.scale(-1, 1);
+  cctx.drawImage(video, 0, 0, w, h);
+  drawFilterByKey(cctx, currentLandmarks, w, h, STEPS[stepIndex].key);
+  cctx.restore();
+
+  flash.classList.remove('fire');
+  void flash.offsetWidth;
+  flash.classList.add('fire');
+
+  shots.push({ key: STEPS[stepIndex].key, label: STEPS[stepIndex].label, dataUrl: captureCanvas.toDataURL('image/jpeg', 0.92) });
+  stepIndex++;
+
+  if (stepIndex >= STEPS.length) {
+    finishSession();
+  } else {
+    updateStepUI();
+  }
+}
+
+// ---------- results ----------
+function loadImage(src){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function drawCover(ctx, img, x, y, w, h){
+  const scale = Math.max(w / img.width, h / img.height);
+  const sw = w / scale, sh = h / scale;
+  const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+async function finishSession(){
+  stage = 'results';
+  statusTag.textContent = 'done';
+  stopCamera();
+  controls.style.display = 'none';
+  hintBar.classList.remove('show');
+
+  const images = await Promise.all(shots.map(s => loadImage(s.dataUrl)));
+  const cell = 640, pad = 28, gap = 14, captionH = 34, headerH = 64, footerH = 34;
+  const totalW = cell + pad * 2;
+  const totalH = pad + headerH + (cell + captionH + gap) * images.length - gap + footerH + pad;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = totalW;
+  canvas.height = totalH;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#fafaf8';
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  ctx.fillStyle = '#1c1c1a';
+  ctx.textAlign = 'center';
+  ctx.font = '600 24px Georgia, "Times New Roman", serif';
+  ctx.fillText('Three Takes', totalW / 2, pad + 32);
+
+  ctx.fillStyle = '#8a867c';
+  ctx.font = '11px "Courier New", monospace';
+  const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }).toUpperCase();
+  ctx.fillText(dateStr, totalW / 2, pad + 52);
+
+  let y = pad + headerH;
+  images.forEach((img, i) => {
+    const x = pad;
+    drawCover(ctx, img, x, y, cell, cell);
+    ctx.strokeStyle = '#dddad0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
+
+    ctx.fillStyle = '#1c1c1a';
+    ctx.font = '600 13px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`0${i + 1} — ${shots[i].label}`, x, y + cell + 22);
+
+    ctx.fillStyle = '#2f3e54';
+    ctx.font = '10px "Courier New", monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('CAPTURED', x + cell, y + cell + 22);
+
+    y += cell + captionH + gap;
+  });
+
+  ctx.strokeStyle = '#dddad0';
+  ctx.beginPath();
+  ctx.moveTo(pad, totalH - footerH);
+  ctx.lineTo(totalW - pad, totalH - footerH);
+  ctx.stroke();
+  ctx.fillStyle = '#8a867c';
+  ctx.font = '9px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('MADE IN-BROWSER · NOT UPLOADED', totalW / 2, totalH - footerH + 20);
+
+  stripDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  resultImg.src = stripDataUrl;
+  results.classList.add('show');
+}
+
+// ---------- events ----------
+startBtn.addEventListener('click', startCamera);
+shutterBtn.addEventListener('click', capture);
+
+stopBtn.addEventListener('click', () => {
+  stopCamera();
+  stage = 'intro';
+  controls.style.display = 'none';
+  hintBar.classList.remove('show');
+  introPanel.style.display = 'flex';
+  introText.textContent = 'Three shots, three disguises: a cowboy hat, a mustache, and an eye patch, each one following your face automatically. Nothing leaves this browser tab.';
+  startBtn.textContent = 'Enable Camera';
+  startBtn.disabled = false;
+  statusTag.textContent = 'idle';
+  [...stepsEl.children].forEach(el => el.classList.remove('done', 'active'));
+});
+
+restartBtn.addEventListener('click', () => {
+  results.classList.remove('show');
+  stripDataUrl = null;
+  startCamera();
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!stripDataUrl) return;
+  const a = document.createElement('a');
+  a.href = stripDataUrl;
+  a.download = 'three-takes.jpg';
+  a.click();
+});
+</script>
+</body>
+</html>
