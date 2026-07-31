@@ -1,0 +1,20 @@
+ Filther
+
+A browser-based face filter photobooth built with **MediaPipe Face Landmarker**. Capture three photos with fun filters (Cowboy Hat, Mustache, and Eye Patch) and download them as a photobooth strip—all processed locally in your browser.
+
+Live Demo
+
+https://andrewpanimdim.github.io/filther/
+
+Scan the QR code below for quick access.
+
+
+## 🛠️ Built With
+
+- HTML
+- CSS
+- JavaScript
+- MediaPipe Face Landmarker
+
+
+![alt text](image.png)
